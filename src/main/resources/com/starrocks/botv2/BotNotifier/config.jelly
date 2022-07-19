@@ -1,0 +1,18 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+  <f:entry title="send URLs" field="sendUrlList">
+    <f:textbox  />
+  </f:entry>
+  <f:entry title="Notify when the build is started">
+      <f:checkbox name="onStart" value="true" checked="${instance.isOnStart()}"/>
+  </f:entry>
+  <f:entry title="Notify when the build is successful">
+      <f:checkbox name="onSuccess" value="true" checked="${instance.isOnSuccess()}"/>
+  </f:entry>
+  <f:entry title="Notify when the build is failed">
+      <f:checkbox name="onFailed" value="true" checked="${instance.isOnFailed()}"/>
+  </f:entry>
+  <f:entry title="Notify when the build is aborted">
+      <f:checkbox name="onAbort" value="true" checked="${instance.isOnAbort()}"/>
+  </f:entry>
+</j:jelly>

@@ -1,0 +1,4 @@
+<?jelly escape-by-default='true'?>
+<div>
+  A plugin for the Jenkins CI to send notification to lark group via bot v2 API.
+</div>
