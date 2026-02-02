@@ -6,19 +6,27 @@ import hudson.ProxyConfiguration;
 import hudson.model.AbstractBuild;
 import hudson.model.TaskListener;
 import jenkins.model.Jenkins;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.commons.lang.StringUtils;
-import org.apache.http.util.TextUtils;
+import org.apache.hc.client5.http.auth.AuthScope;
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.ParseException;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 
 public class BotServiceImpl implements BotService {
     private Logger logger = LoggerFactory.getLogger(BotService.class);
@@ -150,8 +158,6 @@ public class BotServiceImpl implements BotService {
         if (urlList == null) {
             return;
         }
-        HttpClient client = getHttpClient();
-        System.out.println(urlList.toString());
 
         String causedby = "";
         if ((StringUtils.equals(type, START) || StringUtils.equals(type, SUCCESS))
@@ -171,46 +177,47 @@ public class BotServiceImpl implements BotService {
         String bodyJsonString = body.toJSONString();
         logger.info(bodyJsonString);
 
-        StringRequestEntity requestEntity = null;
-        try {
-            requestEntity = new StringRequestEntity(bodyJsonString, "application/json", "UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-            logger.error("requestEntity encode error", e);
-        }
+        StringEntity requestEntity = new StringEntity(bodyJsonString, ContentType.APPLICATION_JSON);
 
-        for (String url : urlList) {
-            if (!TextUtils.isEmpty(url)) {
-                PostMethod post = new PostMethod(url);
-                post.setRequestEntity(requestEntity);
-                try {
-                    client.executeMethod(post);
-                    logger.info(post.getResponseBodyAsString());
-                } catch (IOException e) {
-                    logger.error("send msg error", e);
-                } finally {
-                    post.releaseConnection();
+        try (CloseableHttpClient client = getHttpClient()) {
+            for (String url : urlList) {
+                if (StringUtils.isNotEmpty(url)) {
+                    HttpPost post = new HttpPost(url);
+                    post.setEntity(requestEntity);
+                    try (CloseableHttpResponse response = client.execute(post)) {
+                        HttpEntity entity = response.getEntity();
+                        if (entity != null) {
+                            logger.info(EntityUtils.toString(entity));
+                        }
+                    } catch (IOException | ParseException e) {
+                        logger.error("send msg error", e);
+                    }
                 }
             }
+        } catch (IOException e) {
+            logger.error("create status client error", e);
         }
     }
 
-    private HttpClient getHttpClient() {
-        HttpClient client = new HttpClient();
+    private CloseableHttpClient getHttpClient() {
+        HttpClientBuilder builder = HttpClients.custom();
         Jenkins jenkins = Jenkins.getInstance();
         if (jenkins != null && jenkins.proxy != null) {
             ProxyConfiguration proxy = jenkins.proxy;
-            if (proxy != null && client.getHostConfiguration() != null) {
-                client.getHostConfiguration().setProxy(proxy.name, proxy.port);
+            if (proxy != null && builder != null) {
+                HttpHost proxyHost = new HttpHost(proxy.name, proxy.port);
+                builder.setProxy(proxyHost);
                 String username = proxy.getUserName();
                 String password = proxy.getPassword();
                 if (username != null && !"".equals(username.trim())) {
                     logger.info("Using proxy authentication (user=" + username + ")");
-                    client.getState().setProxyCredentials(AuthScope.ANY,
-                            new UsernamePasswordCredentials(username, password));
+                    BasicCredentialsProvider credsProvider = new BasicCredentialsProvider();
+                    credsProvider.setCredentials(new AuthScope(proxyHost),
+                            new UsernamePasswordCredentials(username, password.toCharArray()));
+                    builder.setDefaultCredentialsProvider(credsProvider);
                 }
             }
         }
-        return client;
+        return builder.build();
     }
 }
